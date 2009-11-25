@@ -58,6 +58,15 @@ module AuthlogicFacebookConnect
         rw_config(:facebook_skip_new_user_creation, value, false)
       end
       alias_method :facebook_skip_new_user_creation=, :facebook_skip_new_user_creation
+      
+      # What session key field should be used for the facebook session key
+      #
+      # * <tt>Default:</tt> :facebook_session_key
+      # * <tt>Accepts:</tt> Symbol
+      def facebook_session_key_field(value = nil)
+        rw_config(:facebook_session_key_field, value, :facebook_session_key)
+      end
+      alias_method :facebook_session_key_field=, :facebook_session_key_field
     end
 
     module Methods
@@ -75,7 +84,12 @@ module AuthlogicFacebookConnect
 
       def validate_by_facebook_connect
         facebook_session = controller.facebook_session
-        self.attempted_record = facebook_user_class.find(:first, :conditions => { facebook_uid_field => facebook_session.user.uid }).try(:"#{klass}".to_s.underscore)
+        self.attempted_record = facebook_user_class.find(:first, :conditions => { facebook_uid_field => facebook_session.user.uid })
+        
+        if self.attempted_record
+          self.attempted_record.send(:"#{facebook_session_key_field}=", facebook_session.session_key)
+          self.attempted_record.save
+        end
 
         unless self.attempted_record || facebook_skip_new_user_creation
           begin
@@ -85,8 +99,9 @@ module AuthlogicFacebookConnect
             new_user = klass.new
             if klass == facebook_user_class
               new_user.send(:"#{facebook_uid_field}=", facebook_session.user.uid)
+              new_user.send(:"#{facebook_session_key_field}=", facebook_session.session_key)
             else
-              new_user.send(:"build_#{facebook_user_class.to_s.underscore}", :"#{facebook_uid_field}" => facebook_session.user.uid)
+              new_user.send(:"build_#{facebook_user_class.to_s.underscore}", :"#{facebook_uid_field}" => facebook_session.user.uid, :"#{facebook_session_key_field}" => facebook_session.session_key)
             end
 
             new_user.before_connect(facebook_session) if new_user.respond_to?(:before_connect)
@@ -130,6 +145,10 @@ module AuthlogicFacebookConnect
 
        def facebook_skip_new_user_creation
          self.class.facebook_skip_new_user_creation
+       end
+
+       def facebook_session_key_field
+         self.class.facebook_session_key_field
        end
     end
   end
